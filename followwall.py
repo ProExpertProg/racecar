@@ -33,6 +33,8 @@ class WallFollower:
         LIDAR_TOPIC,
         LaserScan,
         self.callback)
+        
+    self.prev_error = 0
 
   def callback(self, msg):
     ##################################################
@@ -43,36 +45,33 @@ class WallFollower:
 
     filtered_ranges = [360 for i in range(180)] + list(msg.ranges[180:900]) + [360 for i in range(900, len(msg.ranges))]
     right_dist = sum(filtered_ranges[180:260]) / 80
+    right_dist = min(right_dist, 1)
     left_dist = sum(filtered_ranges[820:900]) / 80
+    error = right_dist - left_dist
     min_dist = min(filtered_ranges[480:600])
     print('Min dist:', min_dist, '| Right dist:', right_dist, '| Left dist:', left_dist)
     
     max_angle = 0.34
-    k_p = 2.5
-    k_d = 0.4
-    error = 0
+    max_angle_dist = 0.6
+    k_p = 1 / max_angle_dist
+    k_d = 5
     
     drive = AckermannDriveStamped()
-    drive.drive.speed = 0 if min_dist < 0.4 else 0.4
-    '''
-    if right_dist>0.7 and right_dist<1:
-        drive.drive.steering_angle = thresh_angle*-1*k_p*(right_dist-0.65)
-    elif right_dist<0.6 and right_dist>0.2:
-        drive.drive.steering_angle = thresh_angle*-1*k_p* (right_dist-0.65)
-    '''
-    if right_dist>0.2 and right_dist<1:
-        drive.drive.steering_angle = -max_angle*k_p*(right_dist-0.6)-max_angle*k_d*(right_dist-0.6-error)
-        error = right_dist-0.6
-    elif right_dist >1: 
-        drive.drive.steering_angle = -max_angle
-    elif right_dist < 0.2:
-        drive.drive.steering_angle = max_angle
+    if min_dist < 0.4:
+        drive.drive.speed = -1
+        drive.drive.steering_angle = 0
+    else:
+        drive.drive.speed = 1
+        if left_dist > 2:
+            drive.drive.steering_angle = max_angle
+        elif error >= -max_angle_dist and error <= max_angle_dist:
+            drive.drive.steering_angle = -max_angle*k_p*error-max_angle*k_d*(error-self.prev_error)
+            self.prev_error = error
+        elif error > max_angle_dist: 
+            drive.drive.steering_angle = -max_angle-max_angle*k_d*(error-self.prev_error)
+        elif error < -max_angle_dist:
+            drive.drive.steering_angle = max_angle-max_angle*k_d*(error-self.prev_error)
     
-    '''
-    if right_dist > 0.7:
-        drive.drive.steering_angle = -0.15
-    if right_dist < 0.6:
-       drive.drive.steering_angle = 0.15
     '''
     #drive.drive.steering_angle = 0.5*math.sin(time.time())
     #print(drive.drive.steering_angle)
